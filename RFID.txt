@@ -77,3 +77,116 @@ boolean getID() {
   mfrc522.PICC_HaltA(); // Stop reading
   return true;
 }
+
+//--------------------------//
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <SPI.h>
+#include <MFRC522.h>
+#include <Servo.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // set the LCD address to 0x27 for a 16 chars and 2 line display
+// RFID Constants
+#define SS_PIN 10
+#define RST_PIN 9
+byte readCard[4];
+String MasterTag[] = { "A16FFA1B", "D67E62AF" };
+String tagID = "";
+
+// Servo Constants
+#define SERVO_PIN 2  // Adjust based on your servo connection
+Servo doorServo;
+
+// Create instances
+MFRC522 mfrc522(SS_PIN, RST_PIN);
+
+unsigned long doorOpenTime = 0; // To track when the door was opened
+bool doorIsOpen = false;        // State variable to track if the door is open
+
+void setup() {
+  // Initialize Serial Monitor
+  Serial.begin(9600);
+
+  // Initialize the LCD
+  lcd.init();
+  lcd.backlight();
+
+  // Initialize RFID
+  SPI.begin();
+  mfrc522.PCD_Init();
+  delay(4);
+  mfrc522.PCD_DumpVersionToSerial();
+  Serial.println("--------------------------");
+  Serial.println(" Access Control ");
+  Serial.println("Scan Your Card>>");
+
+  // Initialize Servo
+  doorServo.attach(SERVO_PIN);
+  doorServo.write(0);  // Ensure door is closed at the start
+}
+
+void loop() {
+  while (getID()) {
+    if (tagID == MasterTag[0] || tagID == MasterTag[1]) {
+      Serial.println(" Access Granted!");
+      Serial.println("--------------------------");
+
+      // Open door
+      doorServo.write(90);  // Adjust angle as needed to open the door
+      doorIsOpen = true;    // Set door state to open
+      doorOpenTime = millis(); // Record the time when the door is opened
+
+      // Display Access Granted, Welcome message
+      lcd.setCursor(1, 0);
+      lcd.print("Access Granted,");
+      lcd.setCursor(1, 1);
+      lcd.print("Welcome");
+      delay(3000);  // Display message for 3 seconds
+      lcd.clear();  // Clear screen after displaying message
+
+    } else {
+      Serial.println(" Access Denied!");
+      Serial.println("--------------------------");
+      
+      // Display Access Denied message
+      lcd.setCursor(2, 0);
+      lcd.print("Access Denied,");
+      lcd.setCursor(2, 1);
+      lcd.print("Unauthorized ID");
+      delay(3000);  // Display message for 3 seconds
+      lcd.clear();  // Clear screen after displaying message
+    }
+
+    delay(2000);  // Delay for processing
+    Serial.println(" Access Control ");
+    Serial.println("Scan Your Card>>");
+  }
+
+  // Automatically close the door after 5 seconds if it is open
+  if (doorIsOpen && (millis() - doorOpenTime >= 5000)) {
+    // Close the door after 5 seconds
+    doorServo.write(0);  // Return to closed position
+    doorIsOpen = false;  // Set door state to closed
+  }
+}
+
+/**********************************************************************************************
+ * getID() function
+ * Read new tag if available
+**********************************************************************************************/
+boolean getID() {
+  if (!mfrc522.PICC_IsNewCardPresent()) {
+    return false;
+  }
+  if (!mfrc522.PICC_ReadCardSerial()) {
+    return false;
+  }
+
+  tagID = "";
+  for (uint8_t i = 0; i < 4; i++) {
+    tagID.concat(String(mfrc522.uid.uidByte[i], HEX));
+  }
+  tagID.toUpperCase();
+  mfrc522.PICC_HaltA();  // Stop reading
+  return true;
+}
